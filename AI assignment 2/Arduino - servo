@@ -1,0 +1,39 @@
+#include <Arduino.h>
+#include <Servo.h>
+
+Servo myServo;
+Servo myServo2;
+int servoPinRL = 9;
+int servoPinUD = 10;
+String servoPos;
+int pos;
+
+void setup() {
+  // put your setup code here, to run once:
+Serial.begin(115200);
+myServo.attach(servoPinRL);
+myServo2.attach(servoPinUD);
+myServo.write(90);
+myServo2.write(90);
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+while (Serial.available() == 0){
+}
+  servoPos = Serial.readStringUntil('\r');
+  if(servoPos.substring(0,2) == "RL"){
+    servoPos = servoPos.substring(2);
+    pos = servoPos.toInt();
+    myServo.write(pos);
+    delay(50);
+  }
+
+  if(servoPos.substring(0,2) == "UD"){
+  servoPos = servoPos.substring(2);
+  pos = servoPos.toInt();
+  myServo2.write(pos);
+  delay(50);
+  }
+
+}
