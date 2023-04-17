@@ -6,7 +6,7 @@ from yolo_segmentation import YOLO_Detection
 import time
 import serial
 
-ser = serial.Serial('COM3', baudrate=115200, timeout=1) # Check and change the COM port to match with your Arduino connection
+ser = serial.Serial('COM7', baudrate=115200, timeout=1) # Check and change the COM port to match with your Arduino connection
 time.sleep(0.5)
 pos = 90
 pos1 = 90
@@ -87,3 +87,4 @@ while True:
         break
 cam.release()
 cv2.destroyAllWindows()
+
