@@ -1,0 +1,190 @@
+import random
+import cv2
+import cvzone
+from cvzone.HandTrackingModule import HandDetector
+import math
+import numpy as np
+import time
+
+# Webcam setting
+cap = cv2.VideoCapture(0)
+cap.set(3, 1280)
+cap.set(4, 720)
+
+# Hand detector
+detector = HandDetector(detectionCon=0.8, maxHands=2)
+
+# find function
+# x is the raw distance y is the value in cm
+x = [290, 222, 190, 160, 135, 122, 108, 97, 90, 84, 79, 73, 69, 64, 61, 59, 57]
+y = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100]
+coff = np.polyfit(x, y, 2) # y = Ax^2 + Bx + C
+
+# Game Variables
+cx, cy = 250, 250
+color = (255, 0, 0)
+counter = 0
+score = 0
+totalTime = 15
+GameStart = 0
+distanceL = 0
+distanceR = 0
+
+
+# Right hand event
+def RightHandDis():
+    global counter
+    rx1, ry1, rc1 = lmListR[5]
+    rx2, ry2, rc2 = lmListR[17]
+
+    distance = math.sqrt((ry2 - ry1) ** 2 + (rx2 - rx1) ** 2)
+
+    rA, rB, rC = coff
+    distanceRCM = rA * distance ** 2 + rB * distance + rC
+
+    if distanceRCM < 150:
+        if Rx < cx < Rx + Rw and Ry < cy < Ry + Rh:
+            counter = 1
+
+    return counter, distanceRCM
+
+
+# Left hand event
+def LeftHandDis():
+    global counter
+    lx1, ly1, lc1 = lmListL[5]
+    lx2, ly2, lc2 = lmListL[17]
+
+    distance = math.sqrt((ly2 - ly1) ** 2 + (lx2 - lx1) ** 2)
+
+    lA, lB, lC = coff
+    distanceLCM = lA * distance ** 2 + lB * distance + lC
+
+    if distanceLCM < 150:
+        if Lx < cx < Lx + Lw and Ly < cy < Ly + Lh:
+            counter = 1
+
+    return counter, distanceLCM
+
+
+# event happen when the button pressed
+def checkCounter():
+    global counter, color, cx, cy, score
+    if counter:
+        print(counter)
+        counter += 1
+        print(counter)
+        color = (0, 255, 0)
+        if counter == 3:
+            cx = random.randint(100, 1100)
+            cy = random.randint(100, 600)
+            color = (255, 0, 0)
+            score += 1
+            counter = 0
+
+    return counter, cx, cy, color, score
+
+
+# checking how many hands on the screen and check the condition of the event met
+def checkHands():
+    global lmListR, lmListL, counter, Rx, Ry, Rw, Rh, Lx, Ly, Lw, Lh, distanceL, distanceR
+    if hands:
+        if len(hands) == 1:
+            if hands[0]['type'] == 'Right':
+                lmListR = hands[0]['lmList']
+                Rx, Ry, Rw, Rh = hands[0]['bbox']
+                cv2.rectangle(img, (Rx, Ry), (Rx + Rw, Ry + Rh), (255, 0, 255), 3)
+                counter, distanceR = RightHandDis()
+
+            elif hands[0]['type'] == 'Left':
+                lmListL = hands[0]['lmList']
+                Lx, Ly, Lw, Lh = hands[0]['bbox']
+                cv2.rectangle(img, (Lx, Ly), (Lx + Lw, Ly + Lh), (255, 0, 255), 3)
+                counter, distanceL = LeftHandDis()
+
+        elif len(hands) == 2:
+            if hands[0]['type'] == 'Right':
+                lmListR = hands[0]['lmList']
+                Rx, Ry, Rw, Rh = hands[0]['bbox']
+                cv2.rectangle(img, (Rx, Ry), (Rx + Rw, Ry + Rh), (255, 0, 255), 3)
+                counter, distanceR = RightHandDis()
+            else:
+                lmListR = hands[1]['lmList']
+                Rx, Ry, Rw, Rh = hands[1]['bbox']
+                cv2.rectangle(img, (Rx, Ry), (Rx + Rw, Ry + Rh), (255, 0, 255), 3)
+                counter, distanceR = RightHandDis()
+
+            if hands[0]['type'] == 'Left':
+                lmListL = hands[0]['lmList']
+                Lx, Ly, Lw, Lh = hands[0]['bbox']
+                cv2.rectangle(img, (Lx, Ly), (Lx + Lw, Ly + Lh), (255, 0, 255), 3)
+                counter, distanceL = LeftHandDis()
+            else:
+                lmListL = hands[1]['lmList']
+                Lx, Ly, Lw, Lh = hands[1]['bbox']
+                cv2.rectangle(img, (Lx, Ly), (Lx + Lw, Ly + Lh), (255, 0, 255), 3)
+                counter, distanceL = LeftHandDis()
+
+
+# Loop
+while True:
+    success, img = cap.read()
+    img = cv2.flip(img, 1)
+
+    if GameStart == 0:
+        # Ready HUD
+        cvzone.putTextRect(img, 'Ready?', (550, 400), scale=5, offset=30, thickness=7)
+        cvzone.putTextRect(img, 'Please move away from the webcam until distance more than 100', (100, 500), scale=2, offset=10)
+        cvzone.putTextRect(img, f'DistanceR: {round(distanceR)}', (100, 600), scale=2, offset=10)
+        cvzone.putTextRect(img, f'DistanceL: {round(distanceL)}', (500, 600), scale=2, offset=10)
+
+        hands, img = detector.findHands(img, flipType=False)
+
+        checkHands()
+
+        if hands:
+            pass
+        else:
+            distanceR = 0
+            distanceL = 0
+
+        # remind user to move away from the webcam
+        if distanceR > 100 or distanceL > 100:
+            print(distanceR, distanceL)
+            timeStart = time.time()
+            GameStart = 1
+
+    # Game start
+    if GameStart == 1:
+        if time.time() - timeStart < totalTime:
+
+            hands, img = detector.findHands(img, flipType=False)
+
+            checkHands()
+
+            counter, cx, cy, color, score = checkCounter()
+
+            # Draw Circle
+            cv2.circle(img, (cx, cy), 30, color, cv2.FILLED)
+            cv2.circle(img, (cx, cy), 10, (255, 255, 255), cv2.FILLED)
+            cv2.circle(img, (cx, cy), 20, (255, 255, 255), 2)
+            cv2.circle(img, (cx, cy), 30, (50, 50, 50), 2)
+
+            # Game HUD
+            cvzone.putTextRect(img, f'Time: {int(totalTime-(time.time()-timeStart))}', (1000, 75), scale=3, offset=20)
+            cvzone.putTextRect(img, f'Score: {str(score).zfill(2)}', (100, 75), scale=3, offset=20)
+
+        else:
+            # Game end event
+            cvzone.putTextRect(img, 'End', (550, 400), scale=5, offset=30, thickness=7)
+            cvzone.putTextRect(img, f'Score: {score}', (525, 500), scale=3, offset=20)
+            cvzone.putTextRect(img, 'Press R to restart', (475, 575), scale=2, offset=10)
+
+    cv2.imshow('Game', img)
+    key = cv2.waitKey(1)
+
+    # restart event
+    if key == ord('r'):
+        timeStart = time.time()
+        score = 0
+        GameStart = 0
