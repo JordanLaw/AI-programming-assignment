@@ -1,18 +1,24 @@
 import random
 import cv2
-import cvzone
-from cvzone.HandTrackingModule import HandDetector
 import math
 import numpy as np
 import time
+import mediapipe as mp
 
 # Webcam setting
 cap = cv2.VideoCapture(0)
 cap.set(3, 1280)
 cap.set(4, 720)
 
-# Hand detector
-detector = HandDetector(detectionCon=0.8, maxHands=2)
+# Hand detector setting
+detectMode = False
+maxHands = 2
+detectionCon = 0.8
+minTrackCon = 0.5
+detector = mp.solutions.hands
+detectHands = detector.Hands(static_image_mode=detectMode, max_num_hands=maxHands,
+                                min_detection_confidence=detectionCon,
+                                min_tracking_confidence=minTrackCon)
 
 # find function
 # x is the raw distance y is the value in cm
@@ -27,8 +33,96 @@ counter = 0
 score = 0
 totalTime = 15
 GameStart = 0
+gameOver = 0
 distanceL = 0
 distanceR = 0
+
+
+# Hands detector function
+def findHands(img, draw=True, flipType=True):
+
+    imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    results = detectHands.process(imgRGB)
+    allHands = []
+    h, w, c = img.shape
+    if results.multi_hand_landmarks:
+        for handType, handLms in zip(results.multi_handedness, results.multi_hand_landmarks):
+            myHand = {}
+            # lmList
+            mylmList = []
+            xList = []
+            yList = []
+            for id, lm in enumerate(handLms.landmark):
+                px, py, pz = int(lm.x * w), int(lm.y * h), int(lm.z * w)
+                mylmList.append([px, py, pz])
+                xList.append(px)
+                yList.append(py)
+
+            # bbox
+            xmin, xmax = min(xList), max(xList)
+            ymin, ymax = min(yList), max(yList)
+            boxW, boxH = xmax - xmin, ymax - ymin
+            bbox = xmin, ymin, boxW, boxH
+            cx, cy = bbox[0] + (bbox[2] // 2), \
+                     bbox[1] + (bbox[3] // 2)
+
+            myHand["lmList"] = mylmList
+            myHand["bbox"] = bbox
+            myHand["center"] = (cx, cy)
+
+            if flipType:
+                if handType.classification[0].label == "Right":
+                    myHand["type"] = "Left"
+                else:
+                    myHand["type"] = "Right"
+            else:
+                myHand["type"] = handType.classification[0].label
+            allHands.append(myHand)
+
+            # draw
+            if draw:
+                mp.solutions.drawing_utils.draw_landmarks(img, handLms,
+                                           mp.solutions.hands.HAND_CONNECTIONS)
+                cv2.rectangle(img, (bbox[0] - 20, bbox[1] - 20),
+                              (bbox[0] + bbox[2] + 20, bbox[1] + bbox[3] + 20),
+                              (255, 0, 255), 2)
+                cv2.putText(img, myHand["type"], (bbox[0] - 30, bbox[1] - 30), cv2.FONT_HERSHEY_PLAIN,
+                            2, (255, 0, 255), 2)
+    if draw:
+        return allHands, img
+    else:
+        return allHands
+
+
+def putTextRect(img, text, pos, scale=3, thickness=3, colorT=(255, 255, 255),
+                colorR=(255, 0, 255), font=cv2.FONT_HERSHEY_PLAIN,
+                offset=10, border=None, colorB=(0, 255, 0)):
+    """
+    Creates Text with Rectangle Background
+    :param img: Image to put text rect on
+    :param text: Text inside the rect
+    :param pos: Starting position of the rect x1,y1
+    :param scale: Scale of the text
+    :param thickness: Thickness of the text
+    :param colorT: Color of the Text
+    :param colorR: Color of the Rectangle
+    :param font: Font used. Must be cv2.FONT....
+    :param offset: Clearance around the text
+    :param border: Outline around the rect
+    :param colorB: Color of the outline
+    :return: image, rect (x1,y1,x2,y2)
+    """
+    ox, oy = pos
+    (w, h), _ = cv2.getTextSize(text, font, scale, thickness)
+
+    x1, y1, x2, y2 = ox - offset, oy + offset, ox + w + offset, oy - h - offset
+
+    cv2.rectangle(img, (x1, y1), (x2, y2), colorR, cv2.FILLED)
+    if border is not None:
+        cv2.rectangle(img, (x1, y1), (x2, y2), colorB, border)
+    cv2.putText(img, text, (ox, oy), font, scale, colorT, thickness)
+
+    return img, [x1, y2, x2, y1]
 
 
 # Right hand event
@@ -37,6 +131,7 @@ def RightHandDis():
     rx1, ry1, rc1 = lmListR[5]
     rx2, ry2, rc2 = lmListR[17]
 
+    # calculation of the diagonal distance
     distance = math.sqrt((ry2 - ry1) ** 2 + (rx2 - rx1) ** 2)
 
     rA, rB, rC = coff
@@ -133,12 +228,12 @@ while True:
 
     if GameStart == 0:
         # Ready HUD
-        cvzone.putTextRect(img, 'Ready?', (550, 400), scale=5, offset=30, thickness=7)
-        cvzone.putTextRect(img, 'Please move away from the webcam until distance more than 100', (100, 500), scale=2, offset=10)
-        cvzone.putTextRect(img, f'DistanceR: {round(distanceR)}', (100, 600), scale=2, offset=10)
-        cvzone.putTextRect(img, f'DistanceL: {round(distanceL)}', (500, 600), scale=2, offset=10)
+        putTextRect(img, 'Ready?', (550, 400), scale=5, offset=30, thickness=7)
+        putTextRect(img, 'Please move away from the webcam until distance more than 100', (100, 500), scale=2, offset=10)
+        putTextRect(img, f'DistanceR: {round(distanceR)}', (100, 600), scale=2, offset=10)
+        putTextRect(img, f'DistanceL: {round(distanceL)}', (500, 600), scale=2, offset=10)
 
-        hands, img = detector.findHands(img, flipType=False)
+        hands, img = findHands(img, flipType=False)
 
         checkHands()
 
@@ -158,7 +253,7 @@ while True:
     if GameStart == 1:
         if time.time() - timeStart < totalTime:
 
-            hands, img = detector.findHands(img, flipType=False)
+            hands, img = findHands(img, flipType=False)
 
             checkHands()
 
@@ -171,20 +266,23 @@ while True:
             cv2.circle(img, (cx, cy), 30, (50, 50, 50), 2)
 
             # Game HUD
-            cvzone.putTextRect(img, f'Time: {int(totalTime-(time.time()-timeStart))}', (1000, 75), scale=3, offset=20)
-            cvzone.putTextRect(img, f'Score: {str(score).zfill(2)}', (100, 75), scale=3, offset=20)
+            putTextRect(img, f'Time: {int(totalTime-(time.time()-timeStart))}', (1000, 75), scale=3, offset=20)
+            putTextRect(img, f'Score: {str(score).zfill(2)}', (100, 75), scale=3, offset=20)
 
         else:
             # Game end event
-            cvzone.putTextRect(img, 'End', (550, 400), scale=5, offset=30, thickness=7)
-            cvzone.putTextRect(img, f'Score: {score}', (525, 500), scale=3, offset=20)
-            cvzone.putTextRect(img, 'Press R to restart', (475, 575), scale=2, offset=10)
+            gameOver = 1
+            putTextRect(img, 'End', (550, 400), scale=5, offset=30, thickness=7)
+            putTextRect(img, f'Score: {score}', (525, 500), scale=3, offset=20)
+            putTextRect(img, 'Press R to restart', (475, 575), scale=2, offset=10)
 
     cv2.imshow('Game', img)
     key = cv2.waitKey(1)
 
     # restart event
-    if key == ord('r'):
+    if key == ord('r') and gameOver == 1:
         timeStart = time.time()
         score = 0
+        gameOver = 0
         GameStart = 0
+
